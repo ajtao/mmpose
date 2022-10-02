@@ -4,8 +4,8 @@ json_tricks
 matplotlib
 munkres
 numpy
-opencv-python
+# opencv-python
 pillow
 scipy
-torchvision
+# torchvision
 xtcocotools>=1.12
