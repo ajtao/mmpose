@@ -112,10 +112,11 @@ def main():
                 int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
-        configname = os.path.splitext(os.path.basename(args.pose_config))[0]
+        posecfg = os.path.splitext(os.path.basename(args.pose_config))[0]
+        detcfg = os.path.splitext(os.path.basename(args.det_config))[0]
         vidname = os.path.basename(os.path.dirname(args.video_path))
         vid_fn = os.path.join(args.out_video_root,
-                              f'{vidname}_{configname}.mp4')
+                              f'track_{vidname}_{posecfg}_{detcfg}.mp4')
         print(f'Writing to {vid_fn}')
         videoWriter = cv2.VideoWriter(
             vid_fn, fourcc,
@@ -140,6 +141,7 @@ def main():
 
         # keep the person class bounding boxes.
         person_results = process_mmdet_results(mmdet_results, args.det_cat_id)
+        # person_results = [{'bbox' [x1, y1, x2, y2, conf]}, ...]
 
         # test a single image, with a list of bboxes.
         pose_results, returned_outputs = inference_top_down_pose_model(
