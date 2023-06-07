@@ -7,9 +7,9 @@ import cv2
 
 import mmcv
 
-from mmpose.apis import init_pose_model, vis_pose_result
+from mmpose.apis import (collect_multi_frames, inference_top_down_pose_model,
+                         init_pose_model, vis_pose_result)
 from mmpose.datasets import DatasetInfo
-from mmdeploy_python import PoseDetector
 
 import numpy as np
 
@@ -32,6 +32,7 @@ def main():
     """
     parser = ArgumentParser()
     parser.add_argument('pose_config', help='Config file for pose')
+    parser.add_argument('trt_checkpoint', help='Checkpoint file for pose')
     parser.add_argument('--video-path', type=str, help='Video path')
     parser.add_argument('--tracking-csv', type=str,
                         help='output from player detection/tracking pipeline')
@@ -41,14 +42,7 @@ def main():
         default=False,
         help='whether to show visualizations.')
     parser.add_argument(
-        '--int8',
-        action='store_true',
-        default=False,
-        help='whether to use int8 model')
-    parser.add_argument(
         '--max-plays', type=int, default=None)
-    parser.add_argument(
-        '--max-frames', type=int, default=None)
     parser.add_argument(
         '--match', type=str, default=None)
     parser.add_argument(
@@ -100,9 +94,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.max_frames is not None:
-        last_fnum = args.max_frames
-    elif args.max_plays is not None:
+    if args.max_plays is not None:
         assert args.match is not None
         last_fnum = get_last_fnum(args.match, args.max_plays)
         print(f'Will run for {args.max_plays} plays, fnum {last_fnum}')
@@ -112,7 +104,7 @@ def main():
     print('Initializing model...')
     # build the pose model from a config file and a checkpoint file
     pose_model = init_pose_model(
-        args.pose_config, device=args.device.lower())
+        args.pose_config, args.pose_checkpoint, device=args.device.lower())
 
     dataset = pose_model.cfg.data['test']['type']
     # get datasetinfo
@@ -159,53 +151,48 @@ def main():
 
     _, player_frames = read_tracking(args.tracking_csv)
 
-    if args.int8:
-        model_name = 'int8_dynamic-256x192'
-    else:
-        model_name = 'fp16_dynamic-256x192'
-    trt_model_path = ('/home/atao/devel/public/mmdeploy/work-dirs/mmpose/'
-                      f'topdown/hrnet/{model_name}')
-    trt_detector = PoseDetector(model_path=trt_model_path, device_name='cuda',
-                                device_id=0)
-
     print('Running inference...')
     for frame_id, cur_frame in enumerate(mmcv.track_iter_progress(video)):
 
         # MOT Frame numbering starts at 1
         fnum = frame_id + 1
-        bboxes_xyxy = []
+        person_results = []
         tids = []
         if fnum in player_frames:
+            # person_results = [{'bbox' [x1, y1, x2, y2, conf]}, ...]
             for tid, trk in player_frames[fnum].items():
+                det = [trk.x, trk.y, trk.w, trk.h, 1.0]
+                person_results.append({'bbox': np.array(det)})
                 tids.append(trk.tid)
-                bbox = [trk.x, trk.y, trk.x+trk.w, trk.y+trk.h]
-                bboxes_xyxy.append(bbox)
         else:
             print(f'didn\'t find {fnum} in player_frames')
 
-        if len(bboxes_xyxy) > 12:
-            print(f'WHOOPS, bboxes_xyxy length {len(bboxes_xyxy)}')
+        if len(person_results) > 12:
+            print(f'WHOOPS, person_results length {len(person_results)}')
+            breakpoint()
 
-        if not bboxes_xyxy:
-            trt_frame = cur_frame
+        if args.use_multi_frames:
+            frames = collect_multi_frames(video, frame_id, indices,
+                                          args.online)
+
+        if not person_results:
+            vis_frame = cur_frame
         else:
-            bboxes_batch = [bboxes_xyxy]
-            imgs_batch = [cur_frame]
-            trt_batch = trt_detector.batch(imgs=imgs_batch,
-                                           bboxes=bboxes_batch)
-            # pick first batch
-            trt_results = trt_batch[0]
-            # trt_results = (nplayers, 17, 3)
+            # test a single image, with a list of bboxes.
+            pose_results, returned_outputs = inference_top_down_pose_model(
+                pose_model,
+                frames if args.use_multi_frames else cur_frame,
+                person_results,
+                bbox_thr=args.bbox_thr,
+                format='xywh',
+                dataset=dataset,
+                dataset_info=dataset_info,
+                return_heatmap=return_heatmap,
+                outputs=output_layer_names)
 
-            pose_results = []
-            for i in range(trt_results.shape[0]):
-                bbox_with_score = bboxes_xyxy[i]
-                bbox_with_score.append(1.0)
-                result_person = {
-                    'keypoints': trt_results[i],
-                    'bbox': np.array(bbox_with_score),
-                }
-                pose_results.append(result_person)
+            if len(pose_results) > 12:
+                print(f'WHOOPS, pose_results length {len(pose_results)}')
+                breakpoint()
 
             for idx in range(len(pose_results)):
                 bbox = pose_results[idx]['bbox'].flatten()
@@ -216,20 +203,26 @@ def main():
                 line = f'{fnum},{tid},{bbox},{pose}\n'
                 csv_wr.write(line)
 
-            if args.save_vid:
-                trt_frame = vis_pose_result(
-                    pose_model,
-                    cur_frame,
-                    pose_results,
-                    dataset=dataset,
-                    dataset_info=dataset_info,
-                    kpt_score_thr=args.kpt_thr,
-                    radius=args.radius,
-                    thickness=args.thickness,
-                    show=False)
+            # show the results
+            vis_frame = vis_pose_result(
+                pose_model,
+                cur_frame,
+                pose_results,
+                dataset=dataset,
+                dataset_info=dataset_info,
+                kpt_score_thr=args.kpt_thr,
+                radius=args.radius,
+                thickness=args.thickness,
+                show=False)
+
+        if args.show:
+            cv2.imshow('Frame', vis_frame)
 
         if args.save_vid:
-            videoWriter.write(trt_frame)
+            videoWriter.write(vis_frame)
+
+        if args.show and cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
         if last_fnum is not None and fnum >= last_fnum:
             break
