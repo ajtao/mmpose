@@ -12,6 +12,7 @@ from mmpose.apis import (collect_multi_frames, inference_top_down_pose_model,
 from mmpose.datasets import DatasetInfo
 
 import numpy as np
+from tqdm import tqdm
 
 from vtrak.track_utils import read_tracking
 from vtrak.match_config import Match
@@ -152,7 +153,8 @@ def main():
     _, player_frames = read_tracking(args.tracking_csv)
 
     print('Running inference...')
-    for frame_id, cur_frame in enumerate(mmcv.track_iter_progress(video)):
+    pbar = tqdm(total=len(video), desc='pose estimation')
+    for frame_id, cur_frame in enumerate(video):
 
         # MOT Frame numbering starts at 1
         fnum = frame_id + 1
@@ -164,8 +166,11 @@ def main():
                 det = [trk.x, trk.y, trk.w, trk.h, 1.0]
                 person_results.append({'bbox': np.array(det)})
                 tids.append(trk.tid)
+            pbar.set_postfix_str('pose estimation')
+            pbar.update()
         else:
-            print(f'didn\'t find {fnum} in player_frames')
+            pbar.set_postfix_str('skip, not in play')
+            pbar.update()
 
         if len(person_results) > 12:
             print(f'WHOOPS, person_results length {len(person_results)}')

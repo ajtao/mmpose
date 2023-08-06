@@ -12,6 +12,7 @@ from mmpose.datasets import DatasetInfo
 from mmdeploy_python import PoseDetector
 
 import numpy as np
+from tqdm import tqdm
 
 from vtrak.track_utils import read_tracking
 from vtrak.match_config import Match
@@ -139,7 +140,7 @@ def main():
     if args.save_vid:
         fps = video.fps
         size = (video.width, video.height)
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         vid_fn = os.path.join(args.output_root,
                               f'botsort_{vidname}_{posecfg}.mp4')
         print(f'Writing to {vid_fn}')
@@ -169,7 +170,8 @@ def main():
                                 device_id=0)
 
     print('Running inference...')
-    for frame_id, cur_frame in enumerate(mmcv.track_iter_progress(video)):
+    pbar = tqdm(total=len(video), desc='pose estimation')
+    for frame_id, cur_frame in enumerate(video):
 
         # MOT Frame numbering starts at 1
         fnum = frame_id + 1
@@ -180,8 +182,11 @@ def main():
                 tids.append(trk.tid)
                 bbox = [trk.x, trk.y, trk.x+trk.w, trk.y+trk.h]
                 bboxes_xyxy.append(bbox)
+            pbar.set_postfix_str('pose estimation')
+            pbar.update()
         else:
-            print(f'didn\'t find {fnum} in player_frames')
+            pbar.set_postfix_str('skip, not in play')
+            pbar.update()
 
         if len(bboxes_xyxy) > 12:
             print(f'WHOOPS, bboxes_xyxy length {len(bboxes_xyxy)}')
