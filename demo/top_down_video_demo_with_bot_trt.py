@@ -53,7 +53,7 @@ def main():
     parser.add_argument(
         '--match', type=str, default=None)
     parser.add_argument(
-        '--output-root',
+        '--outdir',
         default='',
         help='Root of the output video file. '
         'Default not saving the visualization video.')
@@ -130,33 +130,18 @@ def main():
     video = mmcv.VideoReader(args.video_path)
     assert video.opened, f'Faild to load video file {args.video_path}'
 
-    os.makedirs(args.output_root, exist_ok=True)
-    posecfg = os.path.splitext(os.path.basename(args.pose_config))[0]
-    vidname = os.path.basename(os.path.dirname(args.video_path))
-    csv_fn = os.path.join(args.output_root,
-                          f'botsort_{vidname}_{posecfg}.csv')
+    os.makedirs(args.outdir, exist_ok=True)
+    # Unified outputs:
+    csv_fn = os.path.join(args.outdir, 'pose.csv')
+    vid_fn = os.path.join(args.outdir, 'pose.mp4')
     csv_wr = open(csv_fn, 'w')
 
     if args.save_vid:
         fps = video.fps
         size = (video.width, video.height)
         fourcc = cv2.VideoWriter_fourcc(*'avc1')
-        vid_fn = os.path.join(args.output_root,
-                              f'botsort_{vidname}_{posecfg}.mp4')
         print(f'Writing to {vid_fn}')
         videoWriter = cv2.VideoWriter(vid_fn, fourcc, fps, size)
-
-    # frame index offsets for inference, used in multi-frame inference setting
-    if args.use_multi_frames:
-        assert 'frame_indices_test' in pose_model.cfg.data.test.data_cfg
-        indices = pose_model.cfg.data.test.data_cfg['frame_indices_test']
-
-    # whether to return heatmap, optional
-    return_heatmap = False
-
-    # return the output of some desired layers,
-    # e.g. use ('backbone', ) to return backbone feature
-    output_layer_names = None
 
     _, player_frames = read_tracking(args.tracking_csv)
 
@@ -170,7 +155,7 @@ def main():
                                 device_id=0)
 
     print('Running inference...')
-    pbar = tqdm(total=len(video), desc='pose estimation')
+    pbar = tqdm(total=len(video), desc='pose estimation', mininterval=10)
     for frame_id, cur_frame in enumerate(video):
 
         # MOT Frame numbering starts at 1
@@ -182,10 +167,10 @@ def main():
                 tids.append(trk.tid)
                 bbox = [trk.x, trk.y, trk.x+trk.w, trk.y+trk.h]
                 bboxes_xyxy.append(bbox)
-            pbar.set_postfix_str('pose estimation')
+            # pbar.set_postfix_str('pose estimation')
             pbar.update()
         else:
-            pbar.set_postfix_str('skip, not in play')
+            # pbar.set_postfix_str('skip, not in play')
             pbar.update()
 
         if len(bboxes_xyxy) > 12:
