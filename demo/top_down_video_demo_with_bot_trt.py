@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 import cv2
 
 import mmcv
+import ffmpegcv
 
 from mmpose.apis import init_pose_model, vis_pose_result
 from mmpose.datasets import DatasetInfo
@@ -141,7 +142,11 @@ def main():
         size = (video.width, video.height)
         fourcc = cv2.VideoWriter_fourcc(*'avc1')
         print(f'Writing to {vid_fn}')
-        videoWriter = cv2.VideoWriter(vid_fn, fourcc, fps, size)
+        # videoWriter = cv2.VideoWriter(vid_fn, fourcc, fps, size)
+        videoWriter = ffmpegcv.noblock(ffmpegcv.VideoWriterNV,
+                                       vid_fn,
+                                       codec='hevc',
+                                       fps=fps)
 
     _, player_frames = read_tracking(args.tracking_csv)
 
