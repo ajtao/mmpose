@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from vtrak.track_utils import read_tracking
 from vtrak.match_config import Match
+from vtrak.vball_misc import safe_vid_rd
 
 
 def get_last_fnum(match, max_plays):
@@ -128,8 +129,8 @@ def main():
         dataset_info = DatasetInfo(dataset_info)
 
     # read video
-    video = mmcv.VideoReader(args.video_path)
-    assert video.opened, f'Faild to load video file {args.video_path}'
+    # video = mmcv.VideoReader(args.video_path)
+    video = safe_vid_rd(args.video_path)
 
     os.makedirs(args.outdir, exist_ok=True)
     # Unified outputs:
@@ -139,10 +140,6 @@ def main():
 
     if args.save_vid:
         fps = video.fps
-        size = (video.width, video.height)
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
-        print(f'Writing to {vid_fn}')
-        # videoWriter = cv2.VideoWriter(vid_fn, fourcc, fps, size)
         videoWriter = ffmpegcv.noblock(ffmpegcv.VideoWriterNV,
                                        vid_fn,
                                        codec='hevc',

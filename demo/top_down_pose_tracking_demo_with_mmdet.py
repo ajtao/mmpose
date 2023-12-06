@@ -10,6 +10,8 @@ from mmpose.apis import (get_track_id, inference_top_down_pose_model,
                          vis_pose_tracking_result)
 from mmpose.datasets import DatasetInfo
 
+from vtrak.vball_misc import safe_vid_rd
+
 try:
     from mmdet.apis import inference_detector, init_detector
     has_mmdet = True
@@ -95,10 +97,8 @@ def main():
     else:
         dataset_info = DatasetInfo(dataset_info)
 
-    cap = cv2.VideoCapture(args.video_path)
+    cap = safe_vid_rd(args.video_path)
     fps = None
-
-    assert cap.isOpened(), f'Faild to load video file {args.video_path}'
 
     if args.out_video_root == '':
         save_out_video = False
@@ -130,11 +130,12 @@ def main():
 
     next_id = 0
     pose_results = []
-    while (cap.isOpened()):
+    status = True
+    while (status):
         pose_results_last = pose_results
 
-        flag, img = cap.read()
-        if not flag:
+        status, img = cap.read()
+        if not status:
             break
         # test a single image, the resulting box is (x1, y1, x2, y2)
         mmdet_results = inference_detector(det_model, img)

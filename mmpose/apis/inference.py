@@ -794,7 +794,7 @@ def vis_pose_result(model,
         pose_kpt_color=pose_kpt_color,
         pose_link_color=pose_link_color,
         kpt_score_thr=kpt_score_thr,
-        bbox_color  =bbox_color,
+        bbox_color=bbox_color,
         show=show,
         out_file=out_file)
 
